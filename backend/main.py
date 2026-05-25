@@ -9,6 +9,9 @@ from typing import Optional
 from fastapi import FastAPI
 from pydantic import BaseModel
 
+from backend.middleware.auth import auth_middleware
+from backend.middleware.rate_limit import rate_limit_middleware
+
 from backend.graph.main_graph import main_graph
 from backend.graph.state import AgentState
 from backend.memory.session_store import (
@@ -27,6 +30,10 @@ from backend.tools.knowledge_manager import list_entries, add_entry, update_entr
 
 
 app = FastAPI(title="智能客服系统", version="1.2.0")
+
+# 中间件（先认证再限流）
+app.middleware("http")(auth_middleware)
+app.middleware("http")(rate_limit_middleware)
 
 
 class ChatRequest(BaseModel):
