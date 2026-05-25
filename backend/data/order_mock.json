@@ -1,0 +1,62 @@
+{
+  "orders": [
+    {
+      "order_id": "ORD-001",
+      "product": "无线蓝牙耳机 Pro",
+      "price": 299.00,
+      "status": "已发货",
+      "created_at": "2024-05-20 14:30:00",
+      "logistics": {
+        "company": "顺丰速运",
+        "tracking_no": "SF1234567890",
+        "status": "运输中",
+        "current_location": "已到达【北京分拣中心】",
+        "estimated_delivery": "2024-05-23"
+      }
+    },
+    {
+      "order_id": "ORD-002",
+      "product": "夏季休闲T恤 白色 L码",
+      "price": 89.00,
+      "status": "待付款",
+      "created_at": "2024-05-21 09:15:00",
+      "logistics": null
+    },
+    {
+      "order_id": "ORD-003",
+      "product": "智能手表 Ultra",
+      "price": 1299.00,
+      "status": "已完成",
+      "created_at": "2024-05-15 11:00:00",
+      "logistics": {
+        "company": "圆通快递",
+        "tracking_no": "YT9876543210",
+        "status": "已签收",
+        "current_location": "已签收，签收人：本人签收",
+        "estimated_delivery": "2024-05-18"
+      }
+    },
+    {
+      "order_id": "ORD-004",
+      "product": "折叠便携键盘",
+      "price": 199.00,
+      "status": "已退款",
+      "created_at": "2024-05-10 16:45:00",
+      "logistics": null
+    },
+    {
+      "order_id": "ORD-005",
+      "product": "天然乳胶枕 一对装",
+      "price": 399.00,
+      "status": "已发货",
+      "created_at": "2024-05-22 08:00:00",
+      "logistics": {
+        "company": "中通快递",
+        "tracking_no": "ZT5678901234",
+        "status": "已揽收",
+        "current_location": "【深圳龙华营业部】已揽收",
+        "estimated_delivery": "2024-05-25"
+      }
+    }
+  ]
+}
