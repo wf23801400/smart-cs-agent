@@ -1,5 +1,7 @@
 # 环境变量
 .env
+.env.*
+!.env.example
 .venv/
 
 # Python
@@ -26,3 +28,11 @@ frontend/dist/
 # IDE
 .vscode/
 .idea/
+
+# Docker
+docker-compose.env*
+*.log
+
+# 测试临时文件
+test_req.json
+test_payload.json

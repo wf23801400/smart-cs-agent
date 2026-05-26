@@ -1,28 +1,39 @@
-"""滑动窗口限流中间件 —— 基于 IP，纯内存实现（零外部依赖）。"""
-import os
+"""Redis 滑动窗口限流中间件 —— 支持多实例部署，重启不丢"""
 import time
-from collections import defaultdict
-from fastapi import Request, HTTPException
 
-# 配置
-WINDOW_SECONDS = int(os.getenv("RATE_LIMIT_WINDOW", "60"))     # 窗口秒数
-MAX_REQUESTS = int(os.getenv("RATE_LIMIT_MAX", "30"))          # 窗口内最大请求数
-BURST_MULTIPLIER = int(os.getenv("RATE_LIMIT_BURST", "3"))     # Chat 端点突发倍数
+import redis
+from fastapi import Request
+from fastapi.responses import JSONResponse
 
-# 存储: {ip: [(timestamp, ...)]}
-_windows: dict[str, list[float]] = defaultdict(list)
+from backend.config import settings
+from backend.logger import logger
 
-# 需要严格限流的端点（走 MAX_REQUESTS）
+# ── 从集中配置读取 ──
+REDIS_HOST = settings.REDIS_HOST
+REDIS_PORT = settings.REDIS_PORT
+WINDOW_SECONDS = settings.RATE_LIMIT_WINDOW
+MAX_REQUESTS = settings.RATE_LIMIT_MAX
+BURST_MULTIPLIER = settings.RATE_LIMIT_BURST
+
 STRICT_PATHS = {"/chat"}
-# 管理端点（走 MAX_REQUESTS * BURST_MULTIPLIER）
 ADMIN_PATHS = {"/knowledge", "/cost/summary", "/cost/trend", "/stats/intents"}
-
-# 公开端点不限流
 PUBLIC_PATHS = {"/health", "/docs", "/openapi.json", "/redoc"}
+
+# ── Redis 连接 ────────────────────────────────────
+_r = redis.Redis(
+    host=REDIS_HOST,
+    port=REDIS_PORT,
+    decode_responses=True,
+    socket_connect_timeout=2,
+    socket_timeout=2,
+)
+
+logger.bind(component="rate_limit").info(
+    f"Redis 限流初始化: {REDIS_HOST}:{REDIS_PORT}"
+)
 
 
 def _get_ip(request: Request) -> str:
-    """获取客户端 IP（优先取 X-Forwarded-For）。"""
     forwarded = request.headers.get("X-Forwarded-For", "")
     if forwarded:
         return forwarded.split(",")[0].strip()
@@ -30,21 +41,14 @@ def _get_ip(request: Request) -> str:
 
 
 async def rate_limit_middleware(request: Request, call_next):
-    """滑动窗口限流。"""
     path = request.url.path
     if path in PUBLIC_PATHS or path.startswith("/docs"):
         return await call_next(request)
 
     ip = _get_ip(request)
     now = time.time()
-    window = _windows[ip]
 
-    # 清理过期记录
-    cutoff = now - WINDOW_SECONDS
-    while window and window[0] < cutoff:
-        window.pop(0)
-
-    # 判断限流阈值
+    # 速率阈值
     if path in STRICT_PATHS:
         limit = MAX_REQUESTS
     elif any(path.startswith(p) for p in ADMIN_PATHS):
@@ -52,13 +56,25 @@ async def rate_limit_middleware(request: Request, call_next):
     else:
         limit = MAX_REQUESTS
 
-    if len(window) >= limit:
-        reset_after = WINDOW_SECONDS - (now - window[0])
-        raise HTTPException(
-            status_code=429,
-            detail=f"请求过于频繁，请 {int(reset_after)} 秒后重试",
-            headers={"Retry-After": str(int(reset_after))},
-        )
+    # Redis 原子滑动窗口
+    window_id = int(now // WINDOW_SECONDS)
+    key = f"rate_limit:{ip}:{window_id}"
 
-    window.append(now)
+    try:
+        count = _r.incr(key)
+        if count == 1:
+            _r.expire(key, WINDOW_SECONDS + 5)  # 5 秒冗余防止边界问题
+
+        if count > limit:
+            ttl = _r.ttl(key)
+            reset_after = ttl if ttl > 0 else WINDOW_SECONDS
+            return JSONResponse(
+                status_code=429,
+                content={"detail": f"请求过于频繁，请 {int(reset_after)} 秒后重试"},
+                headers={"Retry-After": str(int(reset_after))},
+            )
+    except redis.RedisError as e:
+        # Redis 挂了放宽限制，不阻塞业务
+        logger.bind(component="rate_limit").warning(f"Redis 不可用，跳过限流: {e}")
+
     return await call_next(request)

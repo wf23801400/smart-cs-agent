@@ -1,0 +1,103 @@
+# ============================================
+# Smart CS Agent — 一键部署配置
+# 用法：docker-compose up -d
+# ============================================
+
+version: "3.9"
+
+services:
+  # ── 客服 Agent 本体 ─────────────────────────
+  cs-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cs-agent
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env.prod
+    environment:
+      - APP_ENV=prod
+      - MYSQL_HOST=mysql
+      - REDIS_HOST=redis
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+    volumes:
+      # 持久化 Qdrant 向量数据（避免重启重建索引）
+      - qdrant_data:/app/data/qdrant_db
+      - mem0_data:/app/data/mem0_qdrant
+      - ./backend/data/knowledge:/app/data/knowledge:ro
+      - logs:/app/logs
+    networks:
+      - cs-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/health').raise_for_status()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # ── MySQL 8.0 ───────────────────────────────
+  mysql:
+    image: mysql:8.0.36
+    container_name: cs-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD:-Root123!@#}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-smart_cs_agent}
+    ports:
+      - "3306:3306"  # 生产环境建议去掉此行，仅内网访问
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./db/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    restart: unless-stopped
+    networks:
+      - cs-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # 2核2G 优化：限制 MySQL 内存
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --innodb-buffer-pool-size=128M
+      - --performance-schema=OFF
+
+  # ── Redis 7 ─────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: cs-redis
+    ports:
+      - "6379:6379"  # 生产环境建议去掉此行
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - cs-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+# ── 持久化卷 ──────────────────────────────────
+volumes:
+  mysql_data:
+  redis_data:
+  qdrant_data:
+  mem0_data:
+  logs:
+
+# ── 内网（与外部分离） ─────────────────────────
+networks:
+  cs-network:
+    driver: bridge

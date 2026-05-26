@@ -8,6 +8,7 @@ import re
 from langgraph.graph import StateGraph, END
 
 from backend.graph.state import AgentState
+from backend.logger import logger
 from backend.config import dispatcher_llm
 from backend.tools.llm_utils import safe_llm_invoke, FALLBACK_DISPATCHER
 from backend.tools.response_cache import get_cached, set_cache
@@ -27,20 +28,25 @@ def parse_input_node(state: AgentState) -> AgentState:
     输入解析节点：预处理用户消息，提取订单信息等结构化数据。
     当前为简化实现，后续可增加 NER、订单号正则提取等逻辑。
     """
-    print("[parse_input] 解析用户输入")
+    logger.bind(component="parse_input").debug("解析用户输入")
 
-    # 从所有历史消息中提取订单号（支持多轮对话场景）
-    order_info = {}
-    for msg in reversed(state.get("messages", [])):
-        if msg.get("role") == "user":
-            content = msg.get("content", "")
-            # 尝试匹配订单号格式
-            order_match = re.search(r"(ORD-\w+|\b\d{10,}\b)", content)
-            if order_match:
-                order_info["order_id"] = order_match.group(1)
-                break  # 找到最新的订单号就停
+    try:
+        # 从所有历史消息中提取订单号（支持多轮对话场景）
+        order_info = {}
+        for msg in reversed(state.get("messages", [])):
+            if msg.get("role") == "user":
+                content = msg.get("content", "")
+                # 尝试匹配订单号格式
+                order_match = re.search(r"(ORD-\w+|\b\d{10,}\b)", content)
+                if order_match:
+                    order_info["order_id"] = order_match.group(1)
+                    break  # 找到最新的订单号就停
 
-    state["order_info"] = order_info
+        state["order_info"] = order_info
+    except Exception as e:
+        logger.bind(component="parse_input").warning("输入解析异常: {}", str(e))
+        state["order_info"] = {}
+
     state["intent"] = ""
     state["knowledge_results"] = []
     state["ticket_id"] = ""
@@ -53,69 +59,74 @@ def dispatcher_agent_node(state: AgentState) -> AgentState:
     意图分发节点：用 LLM 对用户消息进行意图分类。
     返回 JSON: {"intent": "faq"/"return"/"complaint"/"general"}
     """
-    print("[dispatcher_agent] 开始意图分类")
+    logger.bind(component="dispatcher_agent").info("开始意图分类")
 
-    # 提取最近3条用户消息作为上下文
-    user_msgs = []
-    for msg in reversed(state.get("messages", [])):
-        if msg.get("role") == "user":
-            user_msgs.append(msg.get("content", ""))
-            if len(user_msgs) >= 3:
-                break
-
-    if not user_msgs:
-        state["intent"] = "general"
-        return state
-
-    # 最新消息为主，历史消息为上下文
-    user_msg = user_msgs[0]  # 最新一条
-    context_msgs = user_msgs[1:]  # 往前2条
-    context_text = ""
-    if context_msgs:
-        context_text = "\n".join(f"- 上轮消息：{m}" for m in context_msgs)
-        context_text = f"\n\n【对话上文】（帮你理解指代和省略）：\n{context_text}"
-
-    # 意图分类 prompt —— 输出严格 JSON
-    system_prompt = (
-        "你是一个客服意图分类器。分析用户消息，判断意图类别。\n"
-        "类别定义（注意区分「要退货」和「问退货政策」）：\n"
-        "- return: 用户明确要求退货、换货、退款（如「我要退货」「帮我退款」）\n"
-        "- faq: 询问政策规则、操作方法、工作时间、物流时效等知识类问题（如「退货要几天到账」「怎么查快递」「客服几点上班」）\n"
-        "- complaint: 投诉商品质量、服务态度、物流延误、表达不满\n"
-        "- general: 问候、闲聊、无法归类的其他内容\n\n"
-        "关键是：「问退货政策」走 faq，「要求退货」走 return。\n"
-        "严格按以下 JSON 格式输出，不要输出其他内容：\n"
-        '{"intent": "<类别>"}'
-    )
-
-    # 用户画像上下文（跨会话记忆）
-    memory_context = state.get("memory_context", "")
-    if memory_context:
-        system_prompt += f"\n\n【用户画像】{memory_context}\n请结合用户画像理解意图，如用户说「跟上次一样」时参考画像判断。"
-
-    response_content = safe_llm_invoke(
-        dispatcher_llm,
-        [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"用户消息：{user_msg}{context_text}"},
-        ],
-        fallback=FALLBACK_DISPATCHER,
-    )
-
-    # 解析 LLM 返回的 JSON
     try:
-        result = json.loads(response_content)
-        intent = result.get("intent", "general")
-    except json.JSONDecodeError:
-        # 容错：尝试用正则提取 intent 值
-        match = re.search(r'"intent"\s*:\s*"(faq|return|complaint|general)"', response_content)
-        intent = match.group(1) if match else "general"
+        # 提取最近3条用户消息作为上下文
+        user_msgs = []
+        for msg in reversed(state.get("messages", [])):
+            if msg.get("role") == "user":
+                user_msgs.append(msg.get("content", ""))
+                if len(user_msgs) >= 3:
+                    break
 
-    # 归一化意图值
-    valid_intents = {"faq", "return", "complaint", "general"}
-    state["intent"] = intent if intent in valid_intents else "general"
+        if not user_msgs:
+            state["intent"] = "general"
+            return state
 
-    print(f"[dispatcher_agent] 意图分类结果: {state['intent']}")
+        # 最新消息为主，历史消息为上下文
+        user_msg = user_msgs[0]  # 最新一条
+        context_msgs = user_msgs[1:]  # 往前2条
+        context_text = ""
+        if context_msgs:
+            context_text = "\n".join(f"- 上轮消息：{m}" for m in context_msgs)
+            context_text = f"\n\n【对话上文】（帮你理解指代和省略）：\n{context_text}"
+
+        # 意图分类 prompt —— 输出严格 JSON
+        system_prompt = (
+            "你是一个客服意图分类器。分析用户消息，判断意图类别。\n"
+            "类别定义（注意区分「要退货」和「问退货政策」）：\n"
+            "- return: 用户明确要求退货、换货、退款（如「我要退货」「帮我退款」）\n"
+            "- faq: 询问政策规则、操作方法、工作时间、物流时效等知识类问题（如「退货要几天到账」「怎么查快递」「客服几点上班」）\n"
+            "- complaint: 投诉商品质量、服务态度、物流延误、表达不满\n"
+            "- general: 问候、闲聊、无法归类的其他内容\n\n"
+            "关键是：「问退货政策」走 faq，「要求退货」走 return。\n"
+            "严格按以下 JSON 格式输出，不要输出其他内容：\n"
+            '{"intent": "<类别>"}'
+        )
+
+        # 用户画像上下文（跨会话记忆）
+        memory_context = state.get("memory_context", "")
+        if memory_context:
+            system_prompt += f"\n\n【用户画像】{memory_context}\n请结合用户画像理解意图，如用户说「跟上次一样」时参考画像判断。"
+
+        response_content = safe_llm_invoke(
+            dispatcher_llm,
+            [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"用户消息：{user_msg}{context_text}"},
+            ],
+            fallback=FALLBACK_DISPATCHER,
+        )
+
+        # 解析 LLM 返回的 JSON
+        try:
+            result = json.loads(response_content)
+            intent = result.get("intent", "general")
+        except json.JSONDecodeError:
+            # 容错：尝试用正则提取 intent 值
+            match = re.search(r'"intent"\s*:\s*"(faq|return|complaint|general)"', response_content)
+            intent = match.group(1) if match else "general"
+
+        # 归一化意图值
+        valid_intents = {"faq", "return", "complaint", "general"}
+        state["intent"] = intent if intent in valid_intents else "general"
+
+    except Exception as e:
+        logger.bind(component="dispatcher_agent").warning("意图分类节点异常，使用兜底 general: {}", str(e))
+        state["intent"] = "general"
+
+    logger.bind(component="dispatcher_agent", intent=state["intent"]).info("意图分类结果: {}", state["intent"])
     return state
 
 
@@ -126,28 +137,35 @@ def coordinator_node(state: AgentState) -> AgentState:
     1. 工单号注入
     2. 追加回复到对话历史
     """
-    print("[coordinator] 汇总生成最终回复")
+    logger.bind(component="coordinator").info("汇总生成最终回复")
 
-    final_reply = state.get("final_reply", "")
-    ticket_id = state.get("ticket_id", "")
+    try:
+        final_reply = state.get("final_reply", "")
+        ticket_id = state.get("ticket_id", "")
 
-    # 兜底
-    if not final_reply:
-        final_reply = "抱歉，系统处理异常，请稍后重试或联系人工客服。"
-        print("[coordinator] ⚠️ 子Agent未生成回复，使用兜底话术")
+        # 兜底
+        if not final_reply:
+            final_reply = "抱歉，系统处理异常，请稍后重试或联系人工客服。"
+            logger.bind(component="coordinator").warning("子Agent未生成回复，使用兜底话术")
 
-    # 工单号注入：生成了工单但回复里没提 → 追加
-    if ticket_id and ticket_id not in final_reply:
-        append = f"\n\n📋 工单号：{ticket_id}（如需跟进请提供此编号）"
-        final_reply += append
-        print(f"[coordinator] 注入工单号: {ticket_id}")
+        # 工单号注入：生成了工单但回复里没提 → 追加
+        if ticket_id and ticket_id not in final_reply:
+            append = f"\n\n📋 工单号：{ticket_id}（如需跟进请提供此编号）"
+            final_reply += append
+            logger.bind(component="coordinator", ticket_id=ticket_id).info("注入工单号: {}", ticket_id)
 
-    state["final_reply"] = final_reply
+        state["final_reply"] = final_reply
 
-    # 追加到对话历史
-    state["messages"] = state.get("messages", []) + [
-        {"role": "assistant", "content": final_reply}
-    ]
+        # 追加到对话历史
+        state["messages"] = state.get("messages", []) + [
+            {"role": "assistant", "content": final_reply}
+        ]
+    except Exception as e:
+        logger.bind(component="coordinator").warning("协调器节点异常，使用兜底回复: {}", str(e))
+        state["final_reply"] = "抱歉，系统处理异常，请稍后重试或联系人工客服。"
+        state["messages"] = state.get("messages", []) + [
+            {"role": "assistant", "content": state["final_reply"]}
+        ]
 
     return state
 
@@ -165,27 +183,31 @@ def router_edge(state: AgentState) -> str:
         "general": "general_agent",
     }
     next_node = route_map.get(intent, "general_agent")
-    print(f"[router] intent={intent} → {next_node}")
+    logger.bind(component="router", intent=intent, next_node=next_node).info("intent={} → {}", intent, next_node)
     return next_node
 
 
 def check_cache_node(state: AgentState) -> AgentState:
     """缓存检查节点：同意图+相似问题命中则直接生成回复，跳过子Agent。"""
-    intent = state.get("intent", "")
-    messages = state.get("messages", [])
-    user_msg = ""
-    for msg in reversed(messages):
-        if msg.get("role") == "user":
-            user_msg = msg.get("content", "")
-            break
+    try:
+        intent = state.get("intent", "")
+        messages = state.get("messages", [])
+        user_msg = ""
+        for msg in reversed(messages):
+            if msg.get("role") == "user":
+                user_msg = msg.get("content", "")
+                break
 
-    cached = get_cached(intent, user_msg)
-    if cached:
-        print(f"[cache] ✅ HIT intent={intent} question={user_msg[:20]}")
-        state["final_reply"] = cached
-        state["cache_hit"] = True
-    else:
-        print(f"[cache] ❌ MISS intent={intent} question={user_msg[:20]}")
+        cached = get_cached(intent, user_msg)
+        if cached:
+            logger.bind(component="cache").debug("HIT intent={} question={}", intent, user_msg[:20])
+            state["final_reply"] = cached
+            state["cache_hit"] = True
+        else:
+            logger.bind(component="cache").debug("MISS intent={} question={}", intent, user_msg[:20])
+            state["cache_hit"] = False
+    except Exception as e:
+        logger.bind(component="cache").warning("缓存检查异常，跳过缓存: {}", str(e))
         state["cache_hit"] = False
 
     return state
@@ -204,22 +226,26 @@ def cache_router(state: AgentState) -> str:
         "general": "general_agent",
     }
     next_node = route_map.get(intent, "general_agent")
-    print(f"[router] intent={intent} → {next_node}")
+    logger.bind(component="router", intent=intent, next_node=next_node).info("intent={} → {}", intent, next_node)
     return next_node
 
 
 def save_to_cache_node(state: AgentState) -> AgentState:
     """保存回答到缓存（FAQ/general 类可缓存）。"""
-    intent = state.get("intent", "")
-    reply = state.get("final_reply", "")
-    if intent in ("faq", "general") and reply:
-        messages = state.get("messages", [])
-        user_msg = ""
-        for msg in reversed(messages):
-            if msg.get("role") == "user":
-                user_msg = msg.get("content", "")
-                break
-        set_cache(intent, user_msg, reply)
+    try:
+        intent = state.get("intent", "")
+        reply = state.get("final_reply", "")
+        if intent in ("faq", "general") and reply:
+            messages = state.get("messages", [])
+            user_msg = ""
+            for msg in reversed(messages):
+                if msg.get("role") == "user":
+                    user_msg = msg.get("content", "")
+                    break
+            set_cache(intent, user_msg, reply)
+    except Exception as e:
+        logger.bind(component="save_cache").warning("缓存保存异常，跳过: {}", str(e))
+
     return state
 
 

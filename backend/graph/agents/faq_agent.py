@@ -5,6 +5,8 @@ FAQ 子Agent —— 独立 subgraph，挂载知识库 RAG 检索
 
 from langgraph.graph import StateGraph, END
 
+from backend.logger import logger
+
 from backend.graph.state import AgentState
 from backend.tools.search_knowledge import search_knowledge
 from backend.config import faq_llm
@@ -41,7 +43,7 @@ def search_and_reply_node(state: AgentState) -> AgentState:
             for r in knowledge_results
         )
     except Exception as e:
-        print(f"[faq_agent] ⚠️ 知识库检索失败: {e}，降级为直接回复")
+        logger.bind(component="faq_agent", error=str(e)).warning("知识库检索失败，降级为直接回复")
         state["knowledge_results"] = []
 
     # 提取最近几轮对话作为上下文

@@ -8,21 +8,21 @@ from pathlib import Path
 
 from mem0 import Memory
 
+from backend.config import settings
+from backend.logger import logger
+
 # ── 配置 ──────────────────────────────────────────
 
 MEM0_QDRANT_PATH = str(Path(__file__).parent.parent / "data" / "mem0_qdrant")
 MEM0_HISTORY_PATH = str(Path(__file__).parent.parent / "data" / "mem0_history.db")
-
-DEEPSEEK_KEY = os.getenv("DEEPSEEK_API_KEY", "")
-SILICONFLOW_KEY = os.getenv("SILICONFLOW_API_KEY", "sk-mtjiarcgratjoivrdvjqmylejeqzbwuuhzwpkzxqpgzatoyk")
 
 MEM0_CONFIG = {
     "embedder": {
         "provider": "openai",
         "config": {
             "model": "BAAI/bge-large-zh-v1.5",
-            "api_key": SILICONFLOW_KEY,
-            "openai_base_url": "https://api.siliconflow.cn/v1",
+            "api_key": settings.SILICONFLOW_API_KEY,
+            "openai_base_url": settings.SILICONFLOW_BASE_URL,
         },
     },
     "vector_store": {
@@ -35,9 +35,9 @@ MEM0_CONFIG = {
     "llm": {
         "provider": "openai",
         "config": {
-            "model": "deepseek-chat",
-            "api_key": DEEPSEEK_KEY,
-            "openai_base_url": "https://api.deepseek.com",
+            "model": settings.DEEPSEEK_MODEL,
+            "api_key": settings.DEEPSEEK_API_KEY,
+            "openai_base_url": settings.DEEPSEEK_BASE_URL,
         },
     },
     "history_db_path": MEM0_HISTORY_PATH,
@@ -83,7 +83,7 @@ def search_user_memory(user_id: str, query: str, limit: int = 5) -> str:
 
         return "用户记忆：" + "；".join(memories)
     except Exception as e:
-        print(f"[mem0] 检索失败: {e}")
+        logger.bind(component="mem0").warning(f"检索失败: {e}")
         return ""
 
 
@@ -99,4 +99,4 @@ def save_user_memory(user_id: str, messages: list[dict]) -> None:
         # Mem0.add 会从 messages 中自动提取值得记忆的信息
         memory.add(messages, user_id=user_id)
     except Exception as e:
-        print(f"[mem0] 保存失败: {e}")
+        logger.bind(component="mem0").warning(f"保存失败: {e}")

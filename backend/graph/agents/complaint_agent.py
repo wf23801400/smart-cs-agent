@@ -5,6 +5,8 @@
 
 from langgraph.graph import StateGraph, END
 
+from backend.logger import logger
+
 from backend.graph.state import AgentState
 from backend.tools.create_ticket import create_ticket
 from backend.config import complaint_llm
@@ -55,7 +57,11 @@ def assess_severity_node(state: AgentState) -> AgentState:
     order_info["complaint_summary"] = result.get("summary", "")
     state["order_info"] = order_info
 
-    print(f"[complaint_agent] 严重等级: {order_info['complaint_severity']} - {order_info['complaint_summary']}")
+    logger.bind(
+        component="complaint_agent",
+        severity=order_info['complaint_severity'],
+        summary=order_info['complaint_summary'],
+    ).info("投诉等级评估完成")
     return state
 
 
@@ -72,13 +78,17 @@ def create_complaint_ticket_node(state: AgentState) -> AgentState:
     severity = order_info.get("complaint_severity", "medium")
 
     # 工单号带等级标识
-    ticket_id = create_ticket(
-        user_message=f"[{severity.upper()}] {user_msg}",
-        order_id=order_id,
-        intent="complaint",
-    )
-    state["ticket_id"] = ticket_id
-    print(f"[complaint_agent] 投诉工单: {ticket_id} (等级: {severity})")
+    try:
+        ticket_id = create_ticket(
+            user_message=f"[{severity.upper()}] {user_msg}",
+            order_id=order_id,
+            intent="complaint",
+        )
+        state["ticket_id"] = ticket_id
+        logger.bind(component="complaint_agent", ticket_id=ticket_id, severity=severity).info("投诉工单已创建")
+    except Exception as e:
+        logger.bind(component="complaint_agent", error=str(e)).warning("投诉工单创建失败")
+        state["ticket_id"] = "TICKET-FALLBACK"
     return state
 
 

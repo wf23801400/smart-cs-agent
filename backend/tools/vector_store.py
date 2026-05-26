@@ -11,13 +11,16 @@ import httpx
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct
 
+from backend.config import settings
+from backend.logger import logger
+
 # ── 配置 ──────────────────────────────────────────
 
 COLLECTION_NAME = "faq_knowledge"
 VECTOR_SIZE = 1024  # BAAI/bge-large-zh-v1.5 输出维度
 EMBEDDING_MODEL = "BAAI/bge-large-zh-v1.5"
-EMBEDDING_API_URL = "https://api.siliconflow.cn/v1/embeddings"
-EMBEDDING_API_KEY = os.getenv("SILICONFLOW_API_KEY", "sk-mtjiarcgratjoivrdvjqmylejeqzbwuuhzwpkzxqpgzatoyk")
+EMBEDDING_API_URL = f"{settings.SILICONFLOW_BASE_URL}/embeddings"
+EMBEDDING_API_KEY = settings.SILICONFLOW_API_KEY
 
 QDRANT_PATH = Path(__file__).parent.parent / "data" / "qdrant_db"
 KNOWLEDGE_DIR = Path(__file__).parent.parent / "data" / "knowledge"
@@ -98,7 +101,7 @@ def init_knowledge_base():
 
     # 检查是否已有数据
     if client.collection_exists(COLLECTION_NAME):
-        print("[vector_store] 集合已存在，跳过初始化")
+        logger.bind(component="vector_store").info("集合已存在，跳过初始化")
         return
 
     # 创建集合
@@ -116,18 +119,18 @@ def init_knowledge_base():
         all_chunks.extend(chunks)
 
     if not all_chunks:
-        print("[vector_store] 未找到知识文档")
+        logger.bind(component="vector_store").warning("未找到知识文档")
         return
 
     # 批量 Embedding（每批最多 32 条）
-    print(f"[vector_store] 正在向量化 {len(all_chunks)} 条文档片段...")
+    logger.bind(component="vector_store").info(f"正在向量化 {len(all_chunks)} 条文档片段...")
     texts = [c["text"] for c in all_chunks]
     all_embeddings = []
     batch_size = 32
     for i in range(0, len(texts), batch_size):
         batch = texts[i : i + batch_size]
         all_embeddings.extend(_embed(batch))
-        print(f"[vector_store]   {min(i + batch_size, len(texts))}/{len(texts)}")
+        logger.bind(component="vector_store").debug(f"{min(i + batch_size, len(texts))}/{len(texts)} 已向量化")
 
     # 写入 Qdrant
     points = [
@@ -144,7 +147,7 @@ def init_knowledge_base():
     ]
 
     client.upsert(collection_name=COLLECTION_NAME, points=points)
-    print(f"[vector_store] 知识库初始化完成: {len(points)} 条文档片段")
+    logger.bind(component="vector_store").info(f"知识库初始化完成: {len(points)} 条文档片段")
 
 
 # ── 检索 ──────────────────────────────────────────
@@ -158,7 +161,7 @@ def vector_search(query: str, top_k: int = 3) -> list[dict]:
     client = _get_client()
 
     if not client.collection_exists(COLLECTION_NAME):
-        print("[vector_store] 知识库未初始化，正在初始化...")
+        logger.bind(component="vector_store").info("知识库未初始化，正在初始化...")
         init_knowledge_base()
 
     query_vec = _embed([query])[0]

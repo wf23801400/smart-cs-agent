@@ -18,6 +18,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from evaluation.test_dataset import DATASET
+from backend.config import settings
 from tools.search_knowledge import search_knowledge
 
 # ── 第1步：通过 HTTP API 调用 FAQ Agent ──────────────
@@ -109,8 +110,8 @@ def run_evaluation():
     # ── 第4步：运行 Ragas 评测 ──────────────────────────
     from openai import OpenAI
     openai_client = OpenAI(
-        api_key=os.getenv("DEEPSEEK_API_KEY", ""),
-        base_url="https://api.deepseek.com",
+        api_key=settings.DEEPSEEK_API_KEY,
+        base_url=settings.DEEPSEEK_BASE_URL,
     )
     eval_llm = llm_factory(
         "deepseek-chat",

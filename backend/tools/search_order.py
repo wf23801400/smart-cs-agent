@@ -1,35 +1,25 @@
 """
-Mock 订单查询工具 —— 模拟外部订单系统 API。
-从 data/order_mock.json 读取数据，按 order_id 查询。
+MySQL 订单查询工具 —— 从 MySQL orders + logistics 表查询订单和物流信息。
 """
-
-import json
-from pathlib import Path
-
-# Mock 数据路径
-ORDER_DATA_PATH = Path(__file__).parent.parent / "data" / "order_mock.json"
-
-
-def _load_orders() -> list[dict]:
-    """加载 Mock 订单数据。"""
-    with open(ORDER_DATA_PATH, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    return data.get("orders", [])
+from backend.db.mysql import get_conn
 
 
 def search_order(order_id: str) -> dict:
-    """根据订单号查询订单信息。
+    """根据订单号查询订单信息"""
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT id, order_id, user_id, product_name, price, status, created_at, updated_at FROM orders WHERE order_id = %s",
+        (order_id,),
+    )
+    row = cur.fetchone()
+    conn.close()
 
-    Args:
-        order_id: 订单号（如 ORD-001）
-
-    Returns:
-        {"found": True, "order": {...}} 或 {"found": False, "message": "..."}
-    """
-    orders = _load_orders()
-    for order in orders:
-        if order["order_id"] == order_id:
-            return {"found": True, "order": order}
+    if row:
+        row["price"] = float(row["price"])
+        row["created_at"] = str(row["created_at"])
+        row["updated_at"] = str(row["updated_at"])
+        return {"found": True, "order": row}
 
     return {
         "found": False,
@@ -38,21 +28,21 @@ def search_order(order_id: str) -> dict:
 
 
 def search_logistics(order_id: str) -> dict:
-    """根据订单号查询物流信息。
+    """根据订单号查询物流信息"""
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT id, order_id, company, tracking_no, status, current_location, estimated_delivery, created_at, updated_at FROM logistics WHERE order_id = %s",
+        (order_id,),
+    )
+    row = cur.fetchone()
+    conn.close()
 
-    Args:
-        order_id: 订单号
-
-    Returns:
-        {"found": True, "logistics": {...}} 或 {"found": False, "message": "..."}
-    """
-    result = search_order(order_id)
-    if not result["found"]:
-        return result
-
-    order = result["order"]
-    if "logistics" in order and order["logistics"]:
-        return {"found": True, "logistics": order["logistics"]}
+    if row:
+        row["estimated_delivery"] = str(row["estimated_delivery"]) if row["estimated_delivery"] else None
+        row["created_at"] = str(row["created_at"])
+        row["updated_at"] = str(row["updated_at"])
+        return {"found": True, "logistics": row}
 
     return {
         "found": False,

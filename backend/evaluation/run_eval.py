@@ -17,14 +17,15 @@ import requests
 from evaluation.test_dataset import DATASET
 from openai import OpenAI
 
+from backend.config import settings
 
 # ── 配置 ─────────────────────────────────────────
 
 FAQ_API = "http://localhost:8000/chat"
 SEARCH_API = "http://localhost:8000/eval/search"
 OPENAI_CLIENT = OpenAI(
-    api_key=os.getenv("DEEPSEEK_API_KEY", ""),
-    base_url="https://api.deepseek.com",
+    api_key=settings.DEEPSEEK_API_KEY,
+    base_url=settings.DEEPSEEK_BASE_URL,
 )
 
 JUDGE_MODEL = "deepseek-chat"

@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# 虚拟环境
+venv/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 环境文件（敏感信息，运行时注入）
+.env
+.env.*
+!.env.prod
+
+# 数据（由 volume 挂载）
+data/
+logs/
+
+# Git
+.git/
+.gitignore
+
+# 测试
+tests/
+test_*.py
+test_*.bat
+test_*.ps1
+test_*.json
+
+# 文档
+docs/
+README.md
+ARCHITECTURE.md
+
+# Windows
+*.bat
+*.ps1
+desktop.ini
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# 备份
+*.bak

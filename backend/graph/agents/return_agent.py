@@ -2,6 +2,10 @@
 退换货子Agent —— 独立 subgraph
 流程：验证订单 → 检索退换政策 → 生成工单 → 自然回复
 """
+import sys
+sys.stdout.reconfigure(encoding='utf-8')
+
+from backend.logger import logger
 
 from langgraph.graph import StateGraph, END
 
@@ -21,15 +25,20 @@ def check_order_node(state: AgentState) -> AgentState:
     order_id = order_info.get("order_id", "")
 
     if order_id:
-        result = search_order(order_id)
-        if result["found"]:
-            state["order_info"] = result["order"]
-            print(f"[return_agent] 订单 {order_id} 验证成功，状态: {result['order']['status']}")
+        try:
+            result = search_order(order_id)
+            if result["found"]:
+                state["order_info"] = result["order"]
+                logger.bind(component="return_agent", order_id=order_id, status=result['order']['status']).info("订单验证成功")
+                return state
+        except Exception as e:
+            logger.bind(component="return_agent", error=str(e)).warning("订单查询失败")
+            state["order_info"] = {"missing": True, "error": "系统繁忙"}
             return state
 
     # 无订单号或订单不存在
     state["order_info"] = {"missing": True, "message": "未找到关联订单，请用户提供订单号"}
-    print("[return_agent] 未找到关联订单，将引导用户提供")
+    logger.bind(component="return_agent").warning("未找到关联订单，将引导用户提供")
     return state
 
 
@@ -41,13 +50,17 @@ def search_policy_node(state: AgentState) -> AgentState:
             user_msg = msg.get("content", "")
             break
 
-    policy_results = search_knowledge(f"退换货 政策 {user_msg}", top_k=3)
+    try:
+        policy_results = search_knowledge(f"退换货 政策 {user_msg}", top_k=3)
+    except Exception as e:
+        logger.bind(component="return_agent", error=str(e)).warning("退换政策检索失败")
+        policy_results = []
 
     # 合并已有 knowledge_results（可能来自 dispatcher）
     existing = state.get("knowledge_results", [])
     state["knowledge_results"] = existing + policy_results
 
-    print(f"[return_agent] 已检索 {len(policy_results)} 条退换政策")
+    logger.bind(component="return_agent", policy_count=len(policy_results)).info("已检索退换政策")
     return state
 
 
@@ -62,13 +75,17 @@ def create_ticket_node(state: AgentState) -> AgentState:
     order_info = state.get("order_info", {})
     order_id = order_info.get("order_id", "")
 
-    ticket_id = create_ticket(
-        user_message=user_msg,
-        order_id=order_id,
-        intent="return",
-    )
-    state["ticket_id"] = ticket_id
-    print(f"[return_agent] 工单已创建: {ticket_id}")
+    try:
+        ticket_id = create_ticket(
+            user_message=user_msg,
+            order_id=order_id,
+            intent="return",
+        )
+        state["ticket_id"] = ticket_id
+        logger.bind(component="return_agent", ticket_id=ticket_id).info("工单已创建")
+    except Exception as e:
+        logger.bind(component="return_agent", error=str(e)).warning("工单创建失败")
+        state["ticket_id"] = "TICKET-FALLBACK"
     return state
 
 
