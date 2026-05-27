@@ -7,8 +7,6 @@ on:
 
 env:
   ACR_REGISTRY: crpi-iha8jo2ibb5catip.cn-guangzhou.personal.cr.aliyuncs.com
-  ACR_NAMESPACE: cs-agent
-  ACR_REPO: cs-smart
   ACR_IMAGE: ${{ vars.ACR_REGISTRY || 'crpi-iha8jo2ibb5catip.cn-guangzhou.personal.cr.aliyuncs.com' }}/cs-agent/cs-smart
   ECS_HOST: 114.55.101.73
   ECS_USER: admin
@@ -30,7 +28,8 @@ jobs:
           username: ${{ secrets.ACR_USERNAME }}
           password: ${{ secrets.ACR_PASSWORD }}
 
-      - name: Build and push
+      # ── 构建后端镜像 ─────────────────────────
+      - name: Build and push (backend)
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -42,6 +41,19 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # ── 构建前端镜像 ─────────────────────────
+      - name: Build and push (frontend)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.frontend
+          push: true
+          tags: |
+            ${{ env.ACR_IMAGE }}:frontend
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # ── 部署到 ECS ───────────────────────────
       - name: Deploy to ECS
         uses: appleboy/ssh-action@v1
         with:
@@ -54,9 +66,9 @@ jobs:
             echo "[→] 同步 docker-compose.yml..."
             curl -fsSL https://raw.githubusercontent.com/wf23801400/smart-cs-agent/master/docker-compose.yml -o docker-compose.yml
             echo "[→] 拉取最新镜像..."
-            docker compose pull cs-agent
-            echo "[→] 重启 cs-agent..."
-            docker compose up -d --no-deps cs-agent
+            docker compose pull
+            echo "[→] 重启服务..."
+            docker compose up -d --remove-orphans
             echo "[→] 等待健康检查..."
             sleep 8
             curl -sf http://localhost:8000/health && echo "" && echo "[✓] 部署成功" || echo "[!] 健康检查失败"

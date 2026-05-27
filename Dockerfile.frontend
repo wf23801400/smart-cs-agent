@@ -1,0 +1,24 @@
+# ============================================
+# 前端 — React + Nginx 反代
+# Nginx 自动注入 X-API-Key 给后端 API
+# ============================================
+
+# ── 阶段 1: 构建 React ──────────────────────
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY frontend/package*.json ./
+RUN npm ci
+COPY frontend/ .
+RUN npm run build
+
+# ── 阶段 2: Nginx 提供服务 ──────────────────
+FROM nginx:alpine
+
+# React 构建产物
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+# Nginx 配置模板（envsubst 替换 ${API_KEY}）
+COPY nginx/nginx.conf.template /etc/nginx/templates/default.conf.template
+
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]

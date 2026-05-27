@@ -1,0 +1,42 @@
+server {
+    listen 80;
+    server_name _;
+
+    # ── 前端静态文件 ──────────────────────────
+    location / {
+        root /usr/share/nginx/html;
+        index index.html;
+        try_files $uri $uri/ /index.html;
+    }
+
+    # ── 公开 API（无需认证） ──────────────────
+    location /health {
+        proxy_pass http://cs-agent:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+
+    location /docs {
+        proxy_pass http://cs-agent:8000;
+        proxy_set_header Host $host;
+    }
+
+    location /openapi.json {
+        proxy_pass http://cs-agent:8000;
+        proxy_set_header Host $host;
+    }
+
+    # ── 业务 API（nginx 自动注入 X-API-Key） ──
+    location /chat {
+        proxy_pass http://cs-agent:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-API-Key "${API_KEY}";
+    }
+
+    location /sessions {
+        proxy_pass http://cs-agent:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-API-Key "${API_KEY}";
+    }
+}
