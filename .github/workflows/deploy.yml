@@ -66,11 +66,11 @@ jobs:
             echo "[→] 同步 docker-compose.yml..."
             curl -fsSL https://raw.githubusercontent.com/wf23801400/smart-cs-agent/master/docker-compose.yml -o docker-compose.yml
             echo "[→] 登录 ACR..."
-            echo "${{ secrets.ACR_PASSWORD }}" | docker login --username ${{ secrets.ACR_USERNAME }} --password-stdin ${{ env.ACR_REGISTRY }}
+            echo "${{ secrets.ACR_PASSWORD }}" | sudo docker login --username ${{ secrets.ACR_USERNAME }} --password-stdin ${{ env.ACR_REGISTRY }}
             echo "[→] 拉取最新镜像..."
-            docker compose pull
+            sudo docker compose pull
             echo "[→] 重启服务..."
-            docker compose up -d --remove-orphans
+            sudo docker compose up -d --remove-orphans
             echo "[→] 等待健康检查..."
             sleep 8
             curl -sf http://localhost:8000/health && echo "" && echo "[✓] 部署成功" || echo "[!] 健康检查失败"
