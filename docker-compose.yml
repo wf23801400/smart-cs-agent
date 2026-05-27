@@ -1,16 +1,13 @@
 # ============================================
-# Smart CS Agent — 一键部署配置
-# 用法：docker-compose up -d
+# Smart CS Agent — 生产部署（从 ACR 拉镜像）
+# 用法：docker compose pull && docker compose up -d
 # ============================================
-
-version: "3.9"
 
 services:
   # ── 客服 Agent 本体 ─────────────────────────
   cs-agent:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: registry.cn-guangzhou.aliyuncs.com/cs-agent/cs-smart:latest
+    pull_policy: always
     container_name: cs-agent
     ports:
       - "8000:8000"
@@ -27,19 +24,12 @@ services:
         condition: service_started
     restart: unless-stopped
     volumes:
-      # 持久化 Qdrant 向量数据（避免重启重建索引）
       - qdrant_data:/app/data/qdrant_db
       - mem0_data:/app/data/mem0_qdrant
       - ./backend/data/knowledge:/app/data/knowledge:ro
       - logs:/app/logs
     networks:
       - cs-network
-    healthcheck:
-      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/health').raise_for_status()"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 15s
 
   # ── MySQL 8.0 ───────────────────────────────
   mysql:
@@ -49,7 +39,7 @@ services:
       MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD:-Root123!@#}
       MYSQL_DATABASE: ${MYSQL_DATABASE:-smart_cs_agent}
     ports:
-      - "3306:3306"  # 生产环境建议去掉此行，仅内网访问
+      - "3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
       - ./db/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
@@ -61,7 +51,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-    # 2核2G 优化：限制 MySQL 内存
     deploy:
       resources:
         limits:
@@ -77,7 +66,7 @@ services:
     image: redis:7-alpine
     container_name: cs-redis
     ports:
-      - "6379:6379"  # 生产环境建议去掉此行
+      - "6379:6379"
     volumes:
       - redis_data:/data
     restart: unless-stopped
@@ -89,7 +78,6 @@ services:
       timeout: 5s
       retries: 5
 
-# ── 持久化卷 ──────────────────────────────────
 volumes:
   mysql_data:
   redis_data:
@@ -97,7 +85,6 @@ volumes:
   mem0_data:
   logs:
 
-# ── 内网（与外部分离） ─────────────────────────
 networks:
   cs-network:
     driver: bridge
