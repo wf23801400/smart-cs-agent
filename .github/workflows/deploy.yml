@@ -6,10 +6,10 @@ on:
   workflow_dispatch:  # 允许手动触发
 
 env:
-  ACR_REGISTRY: registry.cn-guangzhou.aliyuncs.com
+  ACR_REGISTRY: crpi-iha8jo2ibb5catip.cn-guangzhou.personal.cr.aliyuncs.com
   ACR_NAMESPACE: cs-agent
   ACR_REPO: cs-smart
-  ACR_IMAGE: ${{ vars.ACR_REGISTRY || 'registry.cn-guangzhou.aliyuncs.com' }}/cs-agent/cs-smart
+  ACR_IMAGE: ${{ vars.ACR_REGISTRY || 'crpi-iha8jo2ibb5catip.cn-guangzhou.personal.cr.aliyuncs.com' }}/cs-agent/cs-smart
   ECS_HOST: 114.55.101.73
   ECS_USER: admin
 
@@ -51,6 +51,8 @@ jobs:
           script: |
             set -e
             cd ~/cs-agent
+            echo "[→] 同步 docker-compose.yml..."
+            curl -fsSL https://raw.githubusercontent.com/wf23801400/smart-cs-agent/master/docker-compose.yml -o docker-compose.yml
             echo "[→] 拉取最新镜像..."
             docker compose pull cs-agent
             echo "[→] 重启 cs-agent..."

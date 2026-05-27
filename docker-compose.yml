@@ -6,7 +6,7 @@
 services:
   # ── 客服 Agent 本体 ─────────────────────────
   cs-agent:
-    image: registry.cn-guangzhou.aliyuncs.com/cs-agent/cs-smart:latest
+    image: crpi-iha8jo2ibb5catip.cn-guangzhou.personal.cr.aliyuncs.com/cs-agent/cs-smart:latest
     pull_policy: always
     container_name: cs-agent
     ports:
