@@ -1,9 +1,13 @@
 const API_BASE = ''
+const API_KEY = 'cs-agent-prod-key-2024'
 
 export async function sendMessage(message, sessionId) {
   const res = await fetch(`${API_BASE}/chat`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'X-API-Key': API_KEY,
+    },
     body: JSON.stringify({ message, session_id: sessionId || null }),
   })
   if (!res.ok) throw new Error(`请求失败: ${res.status}`)
