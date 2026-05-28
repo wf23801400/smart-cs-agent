@@ -35,6 +35,16 @@ from backend.logger import logger
 
 app = FastAPI(title="智能客服系统", version="1.2.0")
 
+# 启动时预加载本地意图分类模型
+@app.on_event("startup")
+async def warmup_model():
+    try:
+        from backend.inference.intent_classifier import warmup
+        warmup()
+        logger.info("本地意图分类模型已加载")
+    except Exception as e:
+        logger.warning("本地模型加载失败，将使用 DeepSeek fallback: {}", str(e))
+
 # 中间件（先认证再限流）
 app.middleware("http")(auth_middleware)
 app.middleware("http")(rate_limit_middleware)

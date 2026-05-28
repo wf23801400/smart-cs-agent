@@ -26,6 +26,7 @@ services:
       - qdrant_data:/app/data/qdrant_db
       - mem0_data:/app/data/mem0_qdrant
       - ./backend/data/knowledge:/app/data/knowledge:ro
+      - ./model:/app/backend/inference/model:ro
       - logs:/app/logs
     networks:
       - cs-network

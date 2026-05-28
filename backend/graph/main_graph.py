@@ -56,13 +56,11 @@ def parse_input_node(state: AgentState) -> AgentState:
 
 def dispatcher_agent_node(state: AgentState) -> AgentState:
     """
-    意图分发节点：用 LLM 对用户消息进行意图分类。
-    返回 JSON: {"intent": "faq"/"return"/"complaint"/"general"}
+    意图分发节点：优先用本地微调模型（<10ms），低置信度 fallback DeepSeek。
     """
     logger.bind(component="dispatcher_agent").info("开始意图分类")
 
     try:
-        # 提取最近3条用户消息作为上下文
         user_msgs = []
         for msg in reversed(state.get("messages", [])):
             if msg.get("role") == "user":
@@ -74,15 +72,29 @@ def dispatcher_agent_node(state: AgentState) -> AgentState:
             state["intent"] = "general"
             return state
 
-        # 最新消息为主，历史消息为上下文
-        user_msg = user_msgs[0]  # 最新一条
-        context_msgs = user_msgs[1:]  # 往前2条
+        user_msg = user_msgs[0]
+        context_msgs = user_msgs[1:]
         context_text = ""
         if context_msgs:
             context_text = "\n".join(f"- 上轮消息：{m}" for m in context_msgs)
-            context_text = f"\n\n【对话上文】（帮你理解指代和省略）：\n{context_text}"
+            context_text = f"\n\n【对话上文】\n{context_text}"
 
-        # 意图分类 prompt —— 输出严格 JSON
+        # === 1. 本地模型分类 ===
+        try:
+            from backend.inference.intent_classifier import classify
+            intent, confidence, probs = classify(f"{user_msg}{context_text}", threshold=0.4)
+            logger.bind(component="dispatcher_agent",
+                        intent=intent, confidence=f"{confidence:.2%}").info(
+                "本地模型: intent={} conf={:.2%}", intent, confidence)
+
+            if intent is not None:
+                state["intent"] = intent
+                return state
+        except ImportError:
+            logger.bind(component="dispatcher_agent").info("本地模型未安装，使用 DeepSeek fallback")
+
+        # === 2. Low confidence → DeepSeek fallback ===
+        logger.bind(component="dispatcher_agent").info("低置信度/未安装，fallback DeepSeek")
         system_prompt = (
             "你是一个客服意图分类器。分析用户消息，判断意图类别。\n"
             "类别定义（注意区分「要退货」和「问退货政策」）：\n"

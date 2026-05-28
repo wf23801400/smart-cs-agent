@@ -36,6 +36,10 @@ docker-compose.env*
 # CI/CD（私钥不能提交）
 .github/cicd_deploy_key
 
+# 微调模型（体积过大，通过 volume 挂载部署）
+backend/inference/model/
+
 # 测试临时文件
 test_req.json
 test_payload.json
+nul  
