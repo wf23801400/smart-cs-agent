@@ -1,6 +1,6 @@
 """
 FastAPI 入口：客服系统 /chat 端点，支持多轮对话记忆 + Mem0 用户画像。
-"""FastAPI 入口：客服系统 /chat 端点，支持多轮对话记忆 + Mem0 用户画像。"""
+"""
 import uuid
 import time
 import os
