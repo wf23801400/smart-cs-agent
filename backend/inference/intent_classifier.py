@@ -1,8 +1,13 @@
 """本地意图分类器 —— 用微调后的 Qwen2.5-1.5B 替代 DeepSeek API"""
+import os
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
-MODEL_PATH = "backend/inference/model"
+# 环境变量 > 项目相对路径 > 硬编码兜底
+MODEL_PATH = os.environ.get(
+    "INTENT_MODEL_PATH",
+    os.path.join(os.path.dirname(__file__), "model")
+)
 _labels = ["complaint", "faq", "return", "general"]
 _label_ids = {}
 _model = None
