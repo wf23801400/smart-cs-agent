@@ -1,6 +1,6 @@
 """
 FastAPI 入口：客服系统 /chat 端点，支持多轮对话记忆 + Mem0 用户画像。
-"""
+"""FastAPI 入口：客服系统 /chat 端点，支持多轮对话记忆 + Mem0 用户画像。"""
 import uuid
 import time
 import os
@@ -10,6 +10,17 @@ from typing import Optional
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+
+# 自动加载 .env（项目根 + 共享配置）
+from dotenv import load_dotenv
+_load_paths = [
+    os.path.join(os.path.dirname(__file__), "..", ".env"),   # 项目根 .env
+    r"C:\code\.env",                                          # 共享 .env
+]
+for _p in _load_paths:
+    _p = os.path.normpath(_p)
+    if os.path.exists(_p):
+        load_dotenv(_p, override=False)
 
 from backend.config import settings
 from backend.middleware.auth import auth_middleware
